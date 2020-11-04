@@ -1,0 +1,122 @@
+---
+- name: Perform basic initial Tower configuration
+  hosts: localhost
+  gather_facts: no
+  vars_prompt:
+    - name: username
+      prompt: "What is your username?"
+      private: no
+
+    - name: password
+      prompt: "What is your password?"
+      private: yes
+
+    - name: user_env_type
+      prompt: "Deploy to prod or lab?"
+      private: no
+
+  tasks:
+
+    - name: Create a new token using username/password
+      awx.awx.tower_token:
+        description: 'Tower Config Token'
+        scope:                "write"
+        state:                 present
+        tower_username:       "{{ username }}"
+        tower_password:       "{{ password }}"
+        tower_verify_ssl:     "{{ tower_verify_ssl | default('no') }}"
+      no_log: True
+      tags:
+        - always
+
+    - name: set default vars for roles
+      set_fact:
+        tower_oauthtoken: "{{ tower_token }}"
+        tower_hostname: "{{ tower_server }}"
+        tower_validate_certs: false
+      no_log: True
+      tags:
+        - always
+
+    - name: Include vars from tower generic configs directory
+      include_vars:
+        dir: tasks/tower_config/config_generic
+        extensions: ["yml"]
+      tags:
+        - always
+
+    - name: Include vars from tower {{ env_type }} configs directory
+      include_vars:
+        dir: "tasks/tower_config/config_{{ env_type }}"
+        extensions: ["yml"]
+      tags:
+        - always
+
+    - name: Add tower settings
+      include_role:
+        name: redhat_cop.tower_configuration.tower_settings      
+      args:
+        apply:
+          tags:
+          - settings
+      when:
+        - user_env_type == 'lab' or user_env_type == 'qa' or user_env_type == 'tenantLab'
+        - username == 'admin'
+      tags:
+        - settings
+
+    - name: Add organizations
+      include_role:
+        name: redhat_cop.tower_configuration.organizations    
+      args:
+        apply:
+          tags:
+          - organizations
+      when:
+        - user_env_type == 'lab' or user_env_type == 'qa' or user_env_type == 'tenantLab'
+        - username == 'admin'
+      tags:
+        - organizations
+
+    - name: Add credential types
+      include_role:
+        name: redhat_cop.tower_configuration.credential_types
+      args:
+        apply:
+          tags:
+          - credentials
+      when:
+        - user_env_type == 'lab' or user_env_type == 'qa' or user_env_type == 'tenantLab'
+        - username == 'admin'
+      tags:
+        - credentials
+
+    - name: Add credentials
+      include_role:
+        name: redhat_cop.tower_configuration.credentials
+      args:
+        apply:
+          tags:
+          - credentials
+      tags:
+        - credentials
+
+    - name: Add Job Templates
+      include_role:
+        name: redhat_cop.tower_configuration.job_templates 
+      args:
+        apply:
+          tags:
+          - job_templates
+      tags:
+        - job_templates
+
+    - name: Add Workflows
+      include_role:
+        name: redhat_cop.tower_configuration.workflow_job_templates 
+      args:
+        apply:
+          tags:
+          - workflow_templates
+      tags:
+        - workflow_templates
